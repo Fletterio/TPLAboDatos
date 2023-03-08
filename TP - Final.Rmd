@@ -1,0 +1,47 @@
+---
+title: "TP final - Fire Occurrence and Cause Data (2000 - 2022) (Oregon)"
+author: "Bruno Mastropietro - Fransisco Letterio - Silvina Flores Galvan"
+date: "2023-03-04"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Ideas para analizar:
+Podemos 
+
+Carguemos lo necesario para trabajar:
+```{r}
+setwd("C:/Users/Usuario/BDocuments/Documentos/Facultad/LCD/Labo de datos Verano 2023/V23- Labo de Datos/TP Final") #En casa
+#setwd("C:/Users/Usuario/BDocuments/Documentos/Facultad/LCD/Labo de datos Verano 2023/V23- Labo de Datos/TP Final") #En el labo    
+
+# Leamos el archivo con el que trabajar:
+  fire.occurence <- read.csv("fire-occurence.csv")
+```
+
+#### Convirtamos las clases de las columnas del data set a sus correspondientes clases
+```{r}
+fire.occurence$Area <- as.factor(fire.occurence$Area)
+fire.occurence$Size_class <- as.factor(fire.occurence$Size_class)
+```
+
+### Empecemos el análisis de este data set
+
+```{r}
+# Empecemos haciendo un barplot para saber cuántos incendios hubo por año.
+  tabla.por.año <- table(fire.occurence$FireYear)
+  {plot(tabla.por.año, xlab = "Fire occurence per year", ylab = "Frecuency")
+  abline(h = mean(tabla.por.año), col = "green", lwd = 3)
+  abline(h = median(tabla.por.año), col = "red", lwd = 3)
+  text(x = 2011, y = 950, label = "Mean", col = "Darkgreen")
+  text( x = 2011, y = 1150, label = "Median", col = "Darkred")}
+  mean(tabla.por.año)
+  median(tabla.por.año)
+```
+En este barplot podemos observar que la media y la mediana de las frecuencias se tienen un valor bastante alto; de 1022 y 1080 aproximadamente.
+
+## Podemos analizar las causas de los incendios, quizas hay una particularidad en la region SOA entre 2000 y 2010 a diferencia del otro período.

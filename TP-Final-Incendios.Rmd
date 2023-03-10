@@ -1,0 +1,404 @@
+---
+title: "TP Final Labo de Datos 2023"
+author: "Bruno Mastropietro - Francisco Letterio - Silvina Flores Galvan"
+output:
+  html_document:
+    df_print: paged
+---
+
+# Datos de ocurrencia y causa de incendios (2000 - 2022)
+Oregon Department of Forestry statistical wildfires from 2000 through 2022
+
+dataset:
+https://www.kaggle.com/datasets/mattop/fire-occurrence-and-cause-data-2000-2022?resource=download
+
+## Este notebook
+En este notebook utilizamos nociones basicas de estadistica descriptiva, graficos para la visualizacion de los datos, clustering, modelado de datos y clasificacion para caracterizar las variables y sus relaciones del dataset sobre incendios.
+
+Primero, comenzamos cargando los datos y las librerias.
+```{r,echo=FALSE,warning=FALSE,message=FALSE,error=FALSE}
+incendios <- read.csv("fire-occurence.csv", header = T)
+
+set.seed(15)
+
+library(ggplot2)
+library(rgl)
+library(GGally)
+library(gridExtra)
+library(paletteer)
+library(lubridate) # mdy_hms y month
+# library(reshape2) # melt y dcast
+library(dplyr)
+library(lubridate)
+library(tidyr)
+
+```
+
+
+## 1. Introduccion a los Datos
+```{r}
+# Primero, convierto todas las columnas de fechas a un formatos POSIXct (el formato de fechas de R)
+incendios$Ign_DateTime <- mdy_hms(incendios$Ign_DateTime)
+incendios$ReportDateTime <- mdy_hms(incendios$ReportDateTime)
+incendios$CreationDate <- mdy_hms(incendios$CreationDate)
+incendios$Discover_DateTime <- mdy_hms(incendios$Discover_DateTime)
+incendios$Control_DateTime <- mdy_hms(incendios$Control_DateTime)
+incendios$ModifiedDate <- mdy_hms(incendios$ModifiedDate)
+
+head(incendios)
+```
+
+
+## 2. Visualizacion de datos
+```{r}
+tabla.por.año <- table(incendios$FireYear)
+mean_val <- mean(tabla.por.año)
+median_val <- median(tabla.por.año)
+
+# Uso aggregate para contar por Serial (ID) la cantidad de incendios por año
+year_counts <- aggregate(Serial ~ FireYear, incendios, length)
+
+# Creo un bar chat
+ggplot(year_counts, aes(x=FireYear, y=Serial)) + geom_bar(stat="identity", fill="coral2") + labs(title="Incendios por Año", x="Año", y="Numero de Incendios") +
+geom_hline(yintercept = mean_val, color = "blue", linetype = "dashed") +
+  geom_hline(yintercept = median_val, color = "darkgreen", linetype = "dashed")
+```
+
+
+
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE,error=FALSE}
+
+# Defino el orden de los meses
+orden_meses <- c("Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+                 "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre")
+
+incendios$MONTH <- as.factor(orden_meses[as.integer(format(as.Date(incendios$Ign_DateTime), "%m"))])
+
+incendios$DAY_OF_WEEK <- as.factor(format(as.Date(incendios$Ign_DateTime), "%A"))
+
+# Convierto los meses a la clase factor y en el orden definido antes
+incendios$MONTH <- factor(incendios$MONTH, levels = orden_meses)
+
+# Creo una tabla para contar los meses y las causas
+counts <- incendios %>%
+  filter(!is.na(MONTH)) %>%
+  group_by(MONTH, HumanOrLightning) %>%
+  summarise(n = n())
+
+# Bar chart
+ggplot(counts, aes(x = MONTH, y = n, fill = HumanOrLightning)) +
+  geom_bar(stat = "identity") +
+  scale_fill_brewer(palette = "Set1") +
+  labs(title = "Cantidad de Incendios por Mes",
+       x = "Meses",
+       y = "Cantidad de Incendios")+
+  theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust=1))
+
+
+
+```
+
+
+Se puede ver como hay muchos mas casos ocasionados por el humano que por relampagos. Y Ademas que Junio y Julio son los meses con mas cantidad de incendios (tiene sentido pues en Oregon es verano y el fuego arde mas rapido)
+
+
+```{r}
+# Nuevo data frame con las Causas Generales (menos relampagos) para analizar los incendios generados por humanos
+cant_causas <- incendios %>% 
+  filter(GeneralCause != "Lightning") %>% 
+  group_by(GeneralCause) %>% 
+  summarise(cant_fuegos = n()) %>% 
+  arrange(desc(cant_fuegos)) %>% na.omit()
+
+# Cambio los nombres a español
+# causas.es <- c("Incendio provocado", "Quema de desechos", "Uso de equipo", "Jóvenes", "Misceláneo", "Ferrocarril", "Recreación", "Fumar", "En investigación")
+# cant_causas$GeneralCauseES <- causas.es[match(cant_causas$GeneralCause, c("Arson", "Debris Burning", "Equipment Use", "Juveniles", "Miscellaneous", "Railroad", "Recreation", "Smoking", "Under Invest"))]
+
+# Bar chat del data frame
+ggplot(cant_causas, aes(x = GeneralCause, y = cant_fuegos)) +
+  geom_bar(stat = "identity", fill = "coral2") +
+  xlab("Causas General") +
+  ylab("Incendios") +
+  ggtitle("Incendios por Causa General") +
+  theme(axis.text.x = element_text(angle = 50, vjust = 1, hjust = 1))
+
+```
+
+
+Las 2 grandes causas son la quema de desechos (debris burning) y el uso de equipo (equipment use), seguidos de recreación y misceláneo (fuego causado por otros factores, como fuegos artificiales, reacciones quimicas, etc).
+
+
+```{r}
+cant_size <- incendios %>% 
+  group_by(Size_class) %>% 
+  summarise(cant_fuegos = n()) %>% 
+  arrange(desc(cant_fuegos)) %>% na.omit()
+
+# Bar chat del data frame
+ggplot(cant_size, aes(x = Size_class, y = cant_fuegos)) +
+  geom_bar(stat = "identity", fill = "coral2") +
+  xlab("Tamaño del incendio") +
+  ylab("Incendios") +
+  ggtitle("Incendios por su Tamaño")
+
+```
+
+
+
+
+## 3. Clustering
+```{r, echo=FALSE,warning=FALSE,message=FALSE,error=FALSE}
+
+# Como los incendios bajo investigacion son muy pocos, no los selecciono
+incendios.h.l <- incendios[incendios$HumanOrLightning != "Under Invest",]
+
+# Creo un data frame con el num total de incendios por mes
+fuegos_totales <- incendios.h.l %>%
+  group_by(MONTH) %>% # agrupo por mes
+  summarize(TotalFuegos = n()) %>% # creo una tabla con la cantidad de fuegos por cada mes
+  ungroup()
+# ungroup() desagrupa lo que agrupe con group_by()
+
+# Normalizo la cantidad, dividiendo por el total de incendios por mes
+fuegos_totales_norm <- incendios.h.l %>%
+  filter(!is.na(MONTH)) %>%
+  group_by(MONTH, HumanOrLightning) %>%
+  summarize(n = n()) %>%
+  mutate(CantNorm = n / fuegos_totales$TotalFuegos[match(MONTH, fuegos_totales$MONTH)]) %>%
+  ungroup()
+# mutate() permite agregar columnas (CantNorm)
+
+# Agrego el total de incendios por mes al data frame fuegos_totales_norm
+fuegos_totales_norm <- fuegos_totales_norm %>%
+  left_join(fuegos_totales, by = "MONTH") # left_join permite hacer merge a 2 data frames basado en una/s columna que tengan en comun, en este caso la MONTH
+
+# Grafico los datos
+ggplot(fuegos_totales_norm, aes(x = MONTH, y = CantNorm, fill = HumanOrLightning)) +
+  geom_col(position = "dodge") +
+  labs(title = "Incendios por mes (Normalizado)",
+       x = "Meses",
+       y = "Cantidad de incendios") +
+  theme(legend.position = "bottom") +
+  scale_fill_brewer(palette = "Set1")
+
+
+```
+
+En el análisis que hicimos, utilizamos datos sobre los incendios y buscamos entender cómo se relacionan los meses del año con las causas de los incendios.
+
+Primero, agrupamos los datos por mes y por causa, para poder graficar cuántos incendios hubo cada mes para cada causa a lo largo del año.
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE,error=FALSE}
+incendios_mes <- incendios.h.l %>%
+  group_by(MONTH, HumanOrLightning) %>%
+  summarize(n = n()) %>%
+  ungroup()
+
+# Normalizo la cantidad de incendios por mes
+incendios_mes_norm <- incendios_mes %>%
+  filter(!is.na(MONTH)) %>%
+  group_by(MONTH) %>%
+  mutate(NormCant = n / sum(n)) %>%
+  ungroup()
+
+# Uso k-means para clusterizar la cantidad normalizada
+kmeans_model <- kmeans(incendios_mes_norm$NormCant, centers = 2)
+incendios_mes_norm$kmeans_cluster <- as.factor(kmeans_model$cluster)
+
+# Grafico de los datos
+ggplot(incendios_mes_norm, aes(x = MONTH, y = NormCant, fill = kmeans_cluster)) +
+  geom_col(position = "dodge") +
+  labs(title = "Incendios por mes (2 clusters)",
+       x = "Meses",
+       y = "Cantidad de incendios (normalizada)",
+       fill = "Cluster") +
+  scale_fill_brewer(palette = "Set1") +
+  theme(legend.position = "bottom")
+
+# Como se vería con 3 centros:
+
+# Uso k-means, esta vez con 3 centroides
+kmeans_model <- kmeans(incendios_mes_norm$NormCant, centers = 3)
+incendios_mes_norm$kmeans_cluster <- as.factor(kmeans_model$cluster)
+
+# Grafico los datos
+ggplot(incendios_mes_norm, aes(x = MONTH, y = NormCant, fill = kmeans_cluster)) +
+  geom_col(position = "dodge") +
+  labs(title = "Incendios por mes (3 clusters)",
+       x = "Meses",
+       y = "Cantidad de incendios (normalizada)",
+       fill = "Cluster") +
+  scale_fill_brewer(palette = "Set1") +
+  theme(legend.position = "bottom")
+```
+
+
+Normalizamos los datos de los incendios para que pudieran ser comparados entre sí, independientemente de cuántos incendios hubiera en total. Utilizando estos datos normalizados, aplicamos k-means clustering, para agrupar patrones similares de incendios en diferentes grupos.
+
+Finalmente, graficamos los diferentes grupos obtenidos a partir del clustering para ver cómo se relacionan los patrones de incendios entre sí y si hay algún mes del año que tenga patrones de incendios diferentes a los demás.
+
+## 4. Modelado
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE,error=FALSE}
+
+# Creo un data frame con una col de cant de incendios por mes
+incendios_cant <- incendios %>%
+  group_by(MONTH) %>%
+  mutate(Fires_month = n()) %>%
+  ungroup() %>%
+  na.omit()
+
+# Luego una col de cant de incendios por mes y año
+fuegos_mes_año <- incendios_cant %>% 
+  group_by(FireYear, MONTH) %>% 
+  summarize(Fires_year_month = n()) %>% 
+  ungroup()
+
+# Lo junto al data frame
+incendios_cant <- incendios_cant %>% 
+  left_join(fuegos_mes_año, by = c("FireYear", "MONTH")) %>% 
+  dplyr::select(Fires_month,EstTotalAcres,Lat_DD,Long_DD,Fires_year_month) %>% 
+  na.omit() %>% 
+  sample_n(100)
+
+# Modelos
+
+incendios_cant <- as.data.frame(incendios_cant)
+
+ajusM1<-lm(Fires_month~EstTotalAcres+Lat_DD+Long_DD+Fires_year_month,data=incendios_cant)
+coe<-coef(ajusM1)
+ajusM1
+coe
+```
+
+
+
+```{r}
+LOOCV <- function(datos){
+  Fires_month<-datos$Fires_month
+  EstTotalAcres<-datos$EstTotalAcres
+  Lat_DD<-datos$Lat_DD
+  Long_DD<-datos$Long_DD
+  Fires_year_month<-datos$Fires_year_month
+  n<-length(Fires_month)
+  predichos.inc<-rep(NA,n)
+  for (i in 1:n){
+    ajus.inc<-lm(Fires_month~EstTotalAcres+Lat_DD+Long_DD+Fires_year_month,data=datos[-i,])
+    predichos.inc[i]<-predict(ajus.inc,newdata=datos[i,])
+  }
+  mean(abs(Fires_month-predichos.inc))
+  
+}
+
+LOOCV(incendios_cant)
+
+
+```
+
+```{r}
+Fires_month <- incendios_cant$Fires_month
+ajusLat<-lm(Fires_month~Lat_DD,data=incendios_cant)
+predichosLat<-predict(ajusLat)
+maeLat <- mean(abs(Fires_month-predichosLat))
+
+
+datosP <- incendios_cant
+datosP["Fires_month"] <- NULL # sin la variable a predecir
+
+binario <- expand.grid(0:1, 0:1, 0:1, 0:1)
+binario <- binario[-1,] # para quitar la columna full 0s
+
+datoSelec <- matrix(rep(NA,100), nrow = 100, byrow = T)
+datoSelec[,1] <- incendios_cant$Fires_month
+colnames(datoSelec) <- c("Fires_month")
+datoSelec <- as.data.frame(datoSelec)
+
+# ...........
+
+modelo16 <- function(datos){
+MAEmenor <- maeLat # un mae de ej (Lat)
+cualesL <- c()
+L <- 2
+for(i in 1:nrow(binario)){
+  cualesL <- c()
+  #me creo mi datoSelec
+  datoSelec <- matrix(rep(NA,100), nrow = 100, byrow = T)
+  datoSelec[,1] <- incendios_cant$Fires_month
+  colnames(datoSelec) <- c("Fires_month")
+  datoSelec <- as.data.frame(datoSelec)
+  L <- 2
+  
+  for(j in 1:ncol(binario)){
+    if(binario[i,j]==1){
+      datoSelec <- cbind(datoSelec,datosP[,j])
+      colnames(datoSelec)[L] <- colnames(datosP)[j]
+      cualesL <- rbind(cualesL,colnames(datosP)[j])
+      L <- L + 1
+    }
+  }
+  
+  n<-length(datoSelec$Fires_month)
+  predichos<-rep(NA,n) 
+
+  for (x in 1:n){
+    ajuss<-lm(Fires_month ~ ., data = datoSelec[-x,])
+    predichos[x]<-predict(ajuss,newdata=datoSelec[x,])
+  }
+
+  MAE <- mean(abs(Fires_month-predichos))
+  if(MAE < MAEmenor){
+    MAEmenor <- MAE
+    nombres <- cualesL
+  }
+}
+
+list(MAEmenor,nombres)
+}
+
+modelo16(incendios_cant)
+```
+
+```{r}
+LOOCVpred <- function(datos){
+  Fires_month<-datos$Fires_month
+  EstTotalAcres<-datos$EstTotalAcres
+  Lat_DD<-datos$Lat_DD
+  Long_DD<-datos$Long_DD
+  Fires_year_month<-datos$Fires_year_month
+  n<-length(Fires_month)
+  predichos.inc<-rep(NA,n)
+  for (i in 1:n){
+    ajus.inc<-lm(Fires_month~EstTotalAcres+Lat_DD+Long_DD+Fires_year_month,data=datos[-i,])
+    predichos.inc[i]<-predict(ajus.inc,newdata=datos[i,])
+  }
+  return(predichos.inc)
+  
+}
+
+# LOOCVpred(incendios_cant)
+
+predicho <- LOOCVpred(incendios_cant)
+
+plot(incendios_cant$Fires_month, predicho, xlab = "Observado", ylab = "Predicho")
+abline(0,1)
+
+```
+
+
+
+## 5. Clasificacion
+
+```{r}
+
+
+```
+
+
+
+
+
+
+
+
+## 6. Conclusiones
